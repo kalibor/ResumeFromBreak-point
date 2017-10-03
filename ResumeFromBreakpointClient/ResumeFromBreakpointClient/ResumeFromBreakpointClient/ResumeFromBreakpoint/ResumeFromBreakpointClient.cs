@@ -4,8 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
-
+ 
 namespace ResumeFromBreakpointClientApp.ResumeFromBreakpoint
 {
     class ResumeFromBreakpointClient
@@ -19,6 +20,8 @@ namespace ResumeFromBreakpointClientApp.ResumeFromBreakpoint
 
         public void Download()
         {
+
+           
             FileStream fs = null;
             string fileName = "";
             string tempFileName = "暫存檔案";
@@ -50,10 +53,9 @@ namespace ResumeFromBreakpointClientApp.ResumeFromBreakpoint
                     }
 
 
-                    using (var response = clien.GetAsync(this._url).Result)
+                    using (var response = clien.GetAsync(this._url, HttpCompletionOption.ResponseHeadersRead,CancellationToken.None).Result)
                     {
 
-                     
                         using (var stream = response.Content.ReadAsStreamAsync().Result)
                         {
                             int bufferSize = 80 * 1040;
@@ -67,11 +69,8 @@ namespace ResumeFromBreakpointClientApp.ResumeFromBreakpoint
                                 readSize = stream.Read(bufferArrray, 0, bufferSize);
                             }
                             fileName = response.Content.Headers.ContentDisposition.FileName.Replace("\"", "");
-                          
-                        }
-                
-              
 
+                        }
 
                     }
                 }
