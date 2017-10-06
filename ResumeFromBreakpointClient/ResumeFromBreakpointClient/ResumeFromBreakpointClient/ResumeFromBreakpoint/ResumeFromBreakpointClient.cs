@@ -2,103 +2,44 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
- 
+
 namespace ResumeFromBreakpointClientApp.ResumeFromBreakpoint
 {
-    class ResumeFromBreakpointClient
+    public class ResumeFromBreakpointClient
     {
-        public ResumeFromBreakpointClient(string url, string filePath)
+        public ResumeFromBreakpointClient(string url, string directory)
         {
             this._url = url;
-            this._filePath = filePath;
-
+            this._directory = directory;
         }
 
         public void Download()
         {
-            FileStream fs = null;
-            string fileName = "";
-            string tempFileName = "暫存檔案";
-
-            long startBytes = 0;
-
-            FileInfo file = new FileInfo(Path.Combine(this._filePath, tempFileName));
-            if (file.Exists)
-            {
-                fs = file.OpenWrite();
-                startBytes = fs.Length;
-                fs.Seek(startBytes, SeekOrigin.Current);
-            }
-            else
-            {
-                fs = file.Create();
-            }
+            DownloadContext downloadcontext = new DownloadContext(Path.Combine(_directory, tempFileName));
 
             try
             {
                 using (var clien = new HttpClient())
                 {
-                    if (startBytes > 0)
+                    if (downloadcontext.StartBytes > 0)
                     {
-                        clien.DefaultRequestHeaders.Range = new System.Net.Http.Headers.RangeHeaderValue(startBytes, null);
+                        clien.DefaultRequestHeaders.Range = new RangeHeaderValue(downloadcontext.StartBytes, null);
                     }
-
                     using (var response = clien.GetAsync(this._url, HttpCompletionOption.ResponseHeadersRead, CancellationToken.None).Result)
                     {
-                        using (var stream = response.Content.ReadAsStreamAsync().Result)
-                        {
-                            int bufferSize = 80 * 1040;
-                            byte[] bufferArrray = new byte[bufferSize];
+                        StartDownload(response, downloadcontext);
 
-                            var contentRange = response.Content.Headers.ContentRange;
-                            long? maxLength = 0;
-                            long? nowLength =0;
-                            if (contentRange!=null)
-                            {
-                                maxLength = contentRange.To;
-                                nowLength = contentRange.From;
-                            }
-                            else
-                            {
-                                maxLength = response.Content.Headers.ContentLength;
-                            }
-                         
-                           
-                            int readSize = stream.Read(bufferArrray, 0, bufferSize);
-
-                            while (readSize > 0)
-                            {
-                                nowLength += readSize;
-                                fs.Write(bufferArrray, 0, readSize);
-                                readSize = stream.Read(bufferArrray, 0, bufferSize);
-
-                                if (s != null)
-                                {
-                                    s.Invoke((long)nowLength, (long)maxLength);
-                                }
-                            }
-
-
-                            if (response.Content.Headers.ContentDisposition != null)
-                            {
-                                fileName = response.Content.Headers.ContentDisposition.FileName.Replace("\"", "");
-
-                            }
-                            else
-                            {
-                                fileName = Guid.NewGuid().ToString();
-                            }
-
-                        }
-
+                        _fileName = downloadcontext.GetFileName(response.Content.Headers);
                     }
                 }
-
-
+                FinishedDownload(downloadcontext);
             }
             catch (Exception e)
             {
@@ -106,24 +47,115 @@ namespace ResumeFromBreakpointClientApp.ResumeFromBreakpoint
             }
             finally
             {
-                if (fs != null)
+                if (downloadcontext.CurrentStream!=null)
                 {
-
-                    fs.Dispose();
-
+                    downloadcontext.CurrentStream.Dispose();
                 }
-                file.CopyTo(Path.Combine(file.DirectoryName, fileName));
-                file.Delete();
             }
 
         }
 
+        #region 私有方法
+
+        private void StartDownload(HttpResponseMessage response, DownloadContext downloadcontext)
+        {
+            using (var stream = response.Content.ReadAsStreamAsync().Result)
+            {
+                byte[] bufferArrray = new byte[_bufferSize];
+
+                downloadcontext.SetFileSize(response.Content.Headers);
+          
+                int readSize = stream.Read(bufferArrray, 0, _bufferSize);
+
+                while (readSize > 0)
+                {
+                    downloadcontext.StartBytes += readSize;
+                    downloadcontext.CurrentStream.Write(bufferArrray, 0, readSize);
+
+                    readSize = stream.Read(bufferArrray, 0, _bufferSize);
+                    fileloading.Invoke(downloadcontext.StartBytes, (long)downloadcontext.FileSize);
+                }
+            }
+        }
+
+
+        private void FinishedDownload(DownloadContext context)
+        {
+            context.Dispose();
+            FileReName();
+            if (fileloaded != null)
+            {
+                fileloaded.Invoke();
+            }
+        }
+
+        #region 檔名處理
+
+        private void FileReName()
+        {
+            string dest = GetNoRepeatFileFullName();
+            FileInfo file = new FileInfo(Path.Combine(_directory, tempFileName));
+            file.MoveTo(dest);
+        }
+
+
+        private string GetNoRepeatFileFullName()
+        {
+  
+            var FullName = Path.Combine(_directory, _fileName);
+            FileInfo fileinfo = new FileInfo(FullName);
+
+            string NoRepeatFullName = "";
+            string templateName = string.Format("{0}(temp){1}", fileinfo.Name.Replace(fileinfo.Extension, ""), fileinfo.Extension);
+            int index = 1;
+
+            while (string.IsNullOrEmpty(NoRepeatFullName))
+            {
+                if (!fileinfo.Exists)
+                {
+                    NoRepeatFullName = fileinfo.FullName;
+                    break;
+                }
+                else
+                {
+                    string fileName = templateName.Replace("(temp)", string.Format("({0})", index));
+                    fileinfo = new FileInfo(Path.Combine(fileinfo.DirectoryName, fileName));
+                    index++;
+                }
+            }
+
+            return NoRepeatFullName;
+
+        }
+        #endregion
+
+        #endregion
+
+        #region property
 
         private string _url { get; set; }
-        private string _filePath { get; set; }
-        public onFileLoad s { get; set; }
+        private string _directory { get; set; }
+        private string _fileName { get; set; }
 
-        public delegate void onFileLoad(long nowLength, long maxLength);
+        public onFileLoading fileloading { get; set; }
+        public onFileLoaded fileloaded { get; set; }
+
+        #endregion
+
+        #region column
+
+        readonly string tempFileName = "暫存檔案.tmp";
+        readonly int _bufferSize = 1024 * 80;
+
+        #endregion
+        
     }
+
+
+   
+
+    public delegate void onFileLoading(long nowLength, long maxLength);
+    public delegate void onFileLoaded();
+
 
 }

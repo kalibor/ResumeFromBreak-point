@@ -13,7 +13,8 @@ namespace ResumeFrombreak_point.Controllers
 
         public HttpResponseMessage Get()
         {
-            var response = new ResumeFromBreakpointServer().DownloadFile(Request, @"C:\Users\sf104137\Desktop\新增資料夾 (2)\OfficialWebsite.7z");
+        
+              var response = new ResumeFromBreakpointServer().DownloadFile(Request, @"C:\Users\sf104137\Desktop\新增資料夾\3acdfc44-b9a8-4589-9345-ec242758e6d9.tmp");
 
             return response;
         }

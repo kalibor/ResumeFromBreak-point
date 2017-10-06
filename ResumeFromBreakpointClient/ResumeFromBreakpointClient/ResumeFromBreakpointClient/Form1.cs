@@ -18,26 +18,49 @@ namespace ResumeFromBreakpointClientApp
         public Form1()
         {
             InitializeComponent();
-           this.s = new Thread(new ThreadStart(() => {
-                ResumeFromBreakpointClient client = new ResumeFromBreakpointClient("http://tpdb.speed2.hinet.net/test_400m.zip", @"C:\Users\sf104137\Desktop\新增資料夾");
-               client.s = new ResumeFromBreakpointClient.onFileLoad(onProgressLoad);
-               client.Download();
-            }));
         }
 
         private void button1_Click(object sender, EventArgs e)
         {
+            if (string.IsNullOrEmpty(textBox1.Text) || string.IsNullOrEmpty(textBox2.Text))
+            {
+                MessageBox.Show("網址或下載資料夾不得為空");
+            }
+            else
+            {
+                if (s == null || !s.IsAlive)
+                {
+                    this.s = new Thread(new ThreadStart(() => {
 
-           s.Start();
+                        ResumeFromBreakpointClient client = new ResumeFromBreakpointClient(textBox2.Text, textBox1.Text);
+                        client.fileloading = new onFileLoading(onProgressLoad);
+                        client.fileloaded = new onFileLoaded(onLoaded);
+                        client.Download();
+                    }));
+                    s.Start();
+                }
+                else
+                {
+                    Monitor.Exit(s);
+                }
+            }
         }
 
         private void button2_Click(object sender, EventArgs e)
         {
-            
-            s.Interrupt();
+            Monitor.Enter(s);
+            onLoaded();
         }
 
-        private delegate void UpdateUICallBack(int max,int now, Control ctl);
+        private void button3_Click(object sender, EventArgs e)
+        {
+            var dialog = this.folderBrowserDialog1.ShowDialog();
+            if (dialog == DialogResult.OK)
+            {
+                textBox1.Text = this.folderBrowserDialog1.SelectedPath;
+            }
+        }
+
 
         private void UpdateUI(int max, int now, Control ctl)
         {
@@ -48,23 +71,29 @@ namespace ResumeFromBreakpointClientApp
             }
             else
             {
-                if (now /max <1)
-                {
-                    this.progressBar1.Maximum = max;
-                    this.progressBar1.Value = now;
-                }
-                else
-                {
-                    MessageBox.Show("下載完畢");
-                }
-     
+                this.progressBar1.Maximum = max;
+                this.progressBar1.Value = now;
+   
             }
         }
+
 
         public void onProgressLoad(long now,long max)
         {
             UpdateUI((int)max,(int)now,progressBar1);
         }
+
+        public void onLoaded()
+        {
+            MessageBox.Show("下載完畢");
+            if (s.IsAlive)
+            {
+                s.Abort();
+            }
+        }
+
         Thread s { get; set; }
+
+        private delegate void UpdateUICallBack(int max, int now, Control ctl);
     }
 }
